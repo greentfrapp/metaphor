@@ -23,6 +23,7 @@ class MAML:
 
 		self.input_dim = input_dim
 		self.output_dim = output_dim
+		self.hidden = [40, 40]
 
 		self.metatrain_tr_x = tf.placeholder(
 			shape=(None, self.input_dim),
@@ -45,38 +46,45 @@ class MAML:
 			name='metatrain_te_y',
 		)
 
-		self.weights = {
-			'w0': tf.Variable(
-				initial_value=tf.truncated_normal([1, 40], stddev=0.01),
-				trainable=True,
-				name='weights_0',
-			),
-			'b0': tf.Variable(
-				initial_value=tf.zeros([40]),
-				trainable=True,
-				name='bias_0'
-			),
-			'w1': tf.Variable(
-				initial_value=tf.truncated_normal([40, 40], stddev=0.01),
-				trainable=True,
-				name='weights_1',
-			),
-			'b1': tf.Variable(
-				initial_value=tf.zeros([40]),
-				trainable=True,
-				name='bias_1'
-			),
-			'w2': tf.Variable(
-				initial_value=tf.truncated_normal([40, 1], stddev=0.01),
-				trainable=True,
-				name='weights_2',
-			),
-			'b2': tf.Variable(
-				initial_value=tf.zeros([1]),
-				trainable=True,
-				name='bias_2'
-			),
-		}
+		self.params = {}
+		for i, units in enumerate(self.hidden):
+			if i == 0:
+				weights = tf.Variable(
+					initial_value=tf.truncated_normal([self.input_dim, units], stddev=0.01),
+					trainable=True,
+					name='weights_{}'.format(i),
+				)
+				bias = tf.Variable(
+					initial_value=tf.zeros([units]),
+					trainable=True,
+					name='bias_{}'.format(i),
+				)
+			else:
+				weights = tf.Variable(
+					initial_value=tf.truncated_normal([self.hidden[i-1], units], stddev=0.01),
+					trainable=True,
+					name='weights_{}'.format(i),
+				)
+				bias = tf.Variable(
+					initial_value=tf.zeros([units]),
+					trainable=True,
+					name='bias_{}'.format(i),
+				)
+
+			self.params['w{}'.format(i)] = weights
+			self.params['b{}'.format(i)] = bias
+
+		self.params['w{}'.format(len(hidden))] = tf.Variable(
+			initial_value=tf.truncated_normal([self.hidden[len(self.hidden)-1], self.output_dim], stddev=0.01),
+			trainable=True,
+			name='weights_{}'.format(len(hidden)),
+		)
+
+		self.params['b{}'.format(len(hidden))] = tf.Variable(
+			initial_value=tf.zeros([self.output_dim]),
+			trainable=True,
+			name='bias_{}'.format(len(hidden)),
+		)
 
 		self.learning_rate = 1e-2
 
@@ -87,7 +95,7 @@ class MAML:
 		# Get original curve
 		output = self.metatrain_te_x
 		for layer in range(3):
-			output = tf.matmul(output, self.weights['w{}'.format(layer)]) + self.weights['b{}'.format(layer)]
+			output = tf.matmul(output, self.params['w{}'.format(layer)]) + self.params['b{}'.format(layer)]
 			if layer != 2:
 				output = tf.nn.relu(output)
 		self.orig_output = output
@@ -95,7 +103,7 @@ class MAML:
 		
 		output = self.metatrain_tr_x
 		for layer in range(3):
-			output = tf.matmul(output, self.weights['w{}'.format(layer)]) + self.weights['b{}'.format(layer)]
+			output = tf.matmul(output, self.params['w{}'.format(layer)]) + self.params['b{}'.format(layer)]
 			if layer != 2:
 				output = tf.nn.relu(output)
 		self.output = output
@@ -130,15 +138,15 @@ class MAML:
 
 		# First update iteration
 		training_loss = tf.reduce_mean((self.output - self.metatrain_tr_y) ** 2)
-		gradients = tf.gradients(training_loss, list(self.weights.values()))
-		gradients = dict(zip(self.weights.keys(), gradients))
+		gradients = tf.gradients(training_loss, list(self.params.values()))
+		gradients = dict(zip(self.params.keys(), gradients))
 		new_weights = {
-			'w0': self.weights['w0'] - self.learning_rate * gradients['w0'],
-			'b0': self.weights['b0'] - self.learning_rate * gradients['b0'],
-			'w1': self.weights['w1'] - self.learning_rate * gradients['w1'],
-			'b1': self.weights['b1'] - self.learning_rate * gradients['b1'],
-			'w2': self.weights['w2'] - self.learning_rate * gradients['w2'],
-			'b2': self.weights['b2'] - self.learning_rate * gradients['b2'],
+			'w0': self.params['w0'] - self.learning_rate * gradients['w0'],
+			'b0': self.params['b0'] - self.learning_rate * gradients['b0'],
+			'w1': self.params['w1'] - self.learning_rate * gradients['w1'],
+			'b1': self.params['b1'] - self.learning_rate * gradients['b1'],
+			'w2': self.params['w2'] - self.learning_rate * gradients['w2'],
+			'b2': self.params['b2'] - self.learning_rate * gradients['b2'],
 		}
 
 		# Second update iteration etc.
@@ -150,8 +158,8 @@ class MAML:
 				if layer != 2:
 					output = tf.nn.relu(output)
 			training_loss = tf.reduce_mean((output - self.metatrain_tr_y) ** 2)
-			gradients = tf.gradients(training_loss, list(self.weights.values()))
-			gradients = dict(zip(self.weights.keys(), gradients))
+			gradients = tf.gradients(training_loss, list(self.params.values()))
+			gradients = dict(zip(self.params.keys(), gradients))
 			new_weights = {
 				'w0': new_weights['w0'] - self.learning_rate * gradients['w0'],
 				'b0': new_weights['b0'] - self.learning_rate * gradients['b0'],

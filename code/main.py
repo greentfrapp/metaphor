@@ -61,5 +61,3 @@ ax.plot(tx, ty, color="blue")
 ax.scatter(x, y, color="blue")
 ax.plot(tx, predicted_y, color="red")
 plt.show()
-
-
